@@ -122,6 +122,7 @@ func (c *Client) GetDownloadInfo(url string) (*DownloadInfo, error) {
 // GetDownloadInfoWithContext retrieves metadata about a zone file download without downloading the file itself.
 // It performs a HEAD request to get information like file size, last modified time, and filename.
 // The operation can be cancelled using the provided context.
+// If the server does not provide a Last-Modified header, LastModified will be zero time.
 func (c *Client) GetDownloadInfoWithContext(ctx context.Context, url string) (*DownloadInfo, error) {
 	c.v("GetDownloadInfo for %q", url)
 	resp, err := c.apiRequest(ctx, true, http.MethodHead, url, nil)
@@ -129,45 +130,43 @@ func (c *Client) GetDownloadInfoWithContext(ctx context.Context, url string) (*D
 		return nil, err
 	}
 	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			c.v("Error closing response body: %v", err)
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.v("Error closing response body: %v", closeErr)
 		}
 	}()
 
+	info := &DownloadInfo{}
+
 	lastModifiedStr := resp.Header.Get("Last-Modified")
-	if lastModifiedStr == "" {
-		return nil, fmt.Errorf("HEAD request to %s missing 'Last-Modified' header", url)
-	}
-	lastModifiedTime, err := time.Parse(time.RFC1123, lastModifiedStr)
-	if err != nil {
-		return nil, err
+	if lastModifiedStr != "" {
+		lastModifiedTime, err := time.Parse(time.RFC1123, lastModifiedStr)
+		if err != nil {
+			c.v("Warning: failed to parse Last-Modified header: %v", err)
+		} else {
+			info.LastModified = lastModifiedTime
+		}
 	}
 
 	contentLengthStr := resp.Header.Get("Content-Length")
-	if contentLengthStr == "" {
-		return nil, fmt.Errorf("HEAD request to %s missing 'Content-Length' header", url)
-	}
-	contentLength, err := strconv.ParseInt(contentLengthStr, 10, 64)
-	if err != nil {
-		return nil, err
-	}
-
-	// Validate Content-Length is not negative
-	if contentLength < 0 {
-		return nil, fmt.Errorf("invalid Content-Length: %d bytes", contentLength)
+	if contentLengthStr != "" {
+		contentLength, err := strconv.ParseInt(contentLengthStr, 10, 64)
+		if err != nil {
+			c.v("Warning: failed to parse Content-Length header: %v", err)
+		} else if contentLength >= 0 {
+			info.ContentLength = contentLength
+		}
 	}
 
 	contentDisposition := resp.Header.Get("Content-Disposition")
-	_, params, err := mime.ParseMediaType(contentDisposition)
-	if err != nil {
-		return nil, err
+	if contentDisposition != "" {
+		_, params, err := mime.ParseMediaType(contentDisposition)
+		if err != nil {
+			c.v("Warning: failed to parse Content-Disposition header: %v", err)
+		} else {
+			info.Filename = params["filename"]
+		}
 	}
 
-	info := &DownloadInfo{
-		LastModified:  lastModifiedTime,
-		ContentLength: contentLength,
-		Filename:      params["filename"],
-	}
 	return info, nil
 }
 

@@ -27,6 +27,7 @@ A unified command-line interface that provides all functionality through subcomm
 - Can save downloaded zones as named by `Content-Disposition` or URL name
 - Can compare local and remote file size and modification time to skip redownloading unchanged zones
 - Can download multiple zones in parallel
+- Supports configuration file for persistent settings
 - [Docker](#docker) image available
 
 ### Usage
@@ -47,15 +48,67 @@ Available Commands:
 Use "czds <command> -h" for more information about a command.
 
 Global Options:
-  -username string    Username to authenticate with (or set CZDS_USERNAME env var)
-  -password string    Password to authenticate with (or set CZDS_PASSWORD env var)
-  -proxy string       Proxy server URL to use for requests (or set CZDS_PROXY env var)
+  -username string    Username to authenticate with (or set CZDS_USERNAME env var or config file)
+  -password string    Password to authenticate with (or set CZDS_PASSWORD env var or config file)
+  -proxy string       Proxy server URL to use for requests (or set CZDS_PROXY env var or config file)
   -verbose            Enable verbose logging
 
 Examples:
   czds download -parallel 10 com org
   czds request -request-all -reason "Research project"
   czds status -zone com
+```
+
+### Configuration File
+
+The czds command supports a JSON configuration file for persistent settings. The configuration file is loaded automatically from the following locations (in order of precedence):
+
+1. Path specified by `CZDS_CONFIG` environment variable
+2. `~/.czds/.czds.json` (Unix) or `%USERPROFILE%\.czds\.czds.json` (Windows)
+3. `.czds.json` in the current working directory
+
+#### Configuration File Format
+
+```json
+{
+  "username": "your_username",
+  "password": "your_password",
+  "proxy": "http://proxy.example.com:8080",
+  "verbose": false,
+  "download": {
+    "parallel": 10,
+    "out": "zones",
+    "retries": 3,
+    "exclude": "com,net",
+    "include": "org,gov,edu",
+    "datedir": true,
+    "progress": true
+  },
+  "request": {
+    "reason": "Research project"
+  },
+  "status": {
+    "progress": true
+  }
+}
+```
+
+#### Configuration Precedence
+
+Settings are applied in the following priority order (highest to lowest):
+
+1. Command-line flags
+2. Environment variables
+3. Configuration file
+4. Default values
+
+Comments are supported using `#` or `//`:
+
+```json
+{
+  "username": "user@example.com",  # This is a comment
+  "password": "secret"
+}
 ```
 
 ### Authentication
@@ -99,6 +152,8 @@ Options:
      don't fetch these zones
   -force
      force redownloading the zone even if it already exists on local disk with same size and modification date
+  -include string
+     only fetch these zones (cannot be used with positional args)
   -out string
      path to save downloaded zones to (default "zones")
   -parallel uint
@@ -128,13 +183,21 @@ Options:
 ```shell
 czds download                                # Download all available zones
 czds download -zones com,org                 # Download specific zones
+czds download -include com,org                # Only download com and org zones
 czds download -parallel 10 -out ./zones     # Download with 10 parallel workers
 czds download -force -zones com              # Force redownload of com zone
 czds download -exclude com,net               # Download all except com and net
 czds download -progress -zones com           # Download with progress reporting
+czds download -datedir                     # Save to date-based subdirectory (e.g., zones/2026-04-08/)
 
 # Zones can also be specified as positional arguments:
 czds download com org net                    # Download com, org, and net zones
+
+# Using include with config file:
+# Add "include": "com,org,gov" to your .czds.json download section
+
+# Using datedir with config file:
+# Add "datedir": true to your .czds.json download section
 
 # Using environment variables:
 export CZDS_USERNAME="your_username"

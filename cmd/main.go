@@ -11,6 +11,9 @@ import (
 // version contains the version string for the czds binary, set at build time.
 var version = "dev"
 
+// globalConfig holds the loaded configuration file settings
+var globalConfig *Config
+
 // main is the entry point for the czds CLI tool. It parses command-line arguments
 // and dispatches to the appropriate subcommand handler.
 func main() {
@@ -19,9 +22,34 @@ func main() {
 		os.Exit(1)
 	}
 
+	subcommand := os.Args[1]
+
+	if subcommand == "help" || subcommand == "-h" || subcommand == "--help" {
+		printUsage()
+		os.Exit(0)
+	}
+
+	if subcommand == "version" || subcommand == "-version" || subcommand == "--version" {
+		fmt.Printf("czds version %s\n", version)
+		os.Exit(0)
+	}
+
+	if subcommand != "download" && subcommand != "dl" &&
+		subcommand != "request" && subcommand != "req" &&
+		subcommand != "status" && subcommand != "st" {
+		fmt.Fprintf(os.Stderr, "Unknown subcommand: %s\n\n", subcommand)
+		printUsage()
+		os.Exit(1)
+	}
+
+	cfg, err := loadConfig("")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load config: %v\n", err)
+	}
+	globalConfig = cfg
+
 	ctx := getContext()
 
-	subcommand := os.Args[1]
 	switch subcommand {
 	case "download", "dl":
 		if err := downloadCmd().Run(ctx); err != nil {
@@ -38,14 +66,6 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
-	case "version", "-version", "--version":
-		fmt.Printf("czds version %s\n", version)
-	case "help", "-h", "--help":
-		printUsage()
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown subcommand: %s\n\n", subcommand)
-		printUsage()
-		os.Exit(1)
 	}
 }
 

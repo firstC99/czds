@@ -31,19 +31,22 @@ type DownloadConfig struct {
 	Force      bool     // Force download even if file exists
 	Redownload bool     // Re-download files that already exist
 	Exclude    string   // Comma-separated list of zones to exclude
+	Include    string   // Comma-separated list of zones to include (only download these)
 	Retries    uint     // Maximum number of retry attempts per zone
 	Zone       string   // Single zone to download (deprecated, use Zones)
 	Quiet      bool     // Suppress non-error output
 	Progress   bool     // Show progress for large file downloads
+	DateDir    bool     // Create date-based subdirectories for zone files
 	Zones      []string // List of zones to download (from command line args)
 }
 
 // zoneInfo contains information about a zone file download task,
 // including the zone name, download URL, and local file path.
 type zoneInfo struct {
-	Name     string // Zone name (e.g., "com", "org")
-	Dl       string // Download URL for the zone file
-	FullPath string // Full local file path where zone will be saved
+	Name         string    // Zone name (e.g., "com", "org")
+	Dl           string    // Download URL for the zone file
+	FullPath     string    // Full local file path where zone will be saved
+	LastModified time.Time // Last modified timestamp from the server
 }
 
 // downloadCmd creates and configures the download subcommand for the czds CLI.
@@ -57,17 +60,68 @@ func downloadCmd() *Command {
 	// Add global flags
 	addGlobalFlags(fs, &gf)
 
+	// Apply config file defaults for download-specific settings
+	if globalConfig != nil && globalConfig.Download != nil {
+		dc := globalConfig.Download
+		if config.Parallel == 0 && dc.Parallel > 0 {
+			config.Parallel = dc.Parallel
+		}
+		if config.OutDir == "" && dc.OutDir != "" {
+			config.OutDir = dc.OutDir
+		}
+		if !config.URLName {
+			config.URLName = dc.URLName
+		}
+		if !config.Force {
+			config.Force = dc.Force
+		}
+		if !config.Redownload {
+			config.Redownload = dc.Redownload
+		}
+		if config.Exclude == "" && dc.Exclude != "" {
+			config.Exclude = dc.Exclude
+		}
+		if config.Include == "" && dc.Include != "" {
+			config.Include = dc.Include
+		}
+		if config.Retries == 0 && dc.Retries > 0 {
+			config.Retries = dc.Retries
+		}
+		if !config.Quiet {
+			config.Quiet = dc.Quiet
+		}
+		if !config.Progress {
+			config.Progress = dc.Progress
+		}
+		if !config.DateDir {
+			config.DateDir = dc.DateDir
+		}
+	}
+
+	// Set default values if not specified by config or flags
+	if config.Parallel == 0 {
+		config.Parallel = 5
+	}
+	if config.OutDir == "" {
+		config.OutDir = "zones"
+	}
+	if config.Retries == 0 {
+		config.Retries = 3
+	}
+
 	// Add download-specific flags
-	fs.UintVar(&config.Parallel, "parallel", 5, "number of zones to download in parallel")
-	fs.StringVar(&config.OutDir, "out", "zones", "path to save downloaded zones to")
-	fs.BoolVar(&config.URLName, "urlname", false, "use the filename from the url link as the saved filename instead of the file header")
-	fs.BoolVar(&config.Force, "force", false, "force redownloading the zone even if it already exists on local disk with same size and modification date")
-	fs.BoolVar(&config.Redownload, "redownload", false, "redownload zones that are newer on the remote server than local copy")
-	fs.StringVar(&config.Exclude, "exclude", "", "don't fetch these zones")
-	fs.UintVar(&config.Retries, "retries", 3, "max retry attempts per zone file download")
+	fs.UintVar(&config.Parallel, "parallel", config.Parallel, "number of zones to download in parallel")
+	fs.StringVar(&config.OutDir, "out", config.OutDir, "path to save downloaded zones to")
+	fs.BoolVar(&config.URLName, "urlname", config.URLName, "use the filename from the url link as the saved filename instead of the file header")
+	fs.BoolVar(&config.Force, "force", config.Force, "force redownloading the zone even if it already exists on local disk with same size and modification date")
+	fs.BoolVar(&config.Redownload, "redownload", config.Redownload, "re-download zones that are newer on the remote server than local copy")
+	fs.StringVar(&config.Exclude, "exclude", config.Exclude, "don't fetch these zones")
+	fs.StringVar(&config.Include, "include", config.Include, "only fetch these zones (cannot be used with positional args)")
+	fs.UintVar(&config.Retries, "retries", config.Retries, "max retry attempts per zone file download")
 	fs.StringVar(&config.Zone, "zones", "", "comma separated list of zones to download, defaults to all")
-	fs.BoolVar(&config.Quiet, "quiet", false, "suppress progress printing")
-	fs.BoolVar(&config.Progress, "progress", false, "show download progress for large files (>50MB)")
+	fs.BoolVar(&config.Quiet, "quiet", config.Quiet, "suppress progress printing")
+	fs.BoolVar(&config.DateDir, "datedir", config.DateDir, "create date-based subdirectories (e.g., zones/2026-04-08/)")
+	fs.BoolVar(&config.Progress, "progress", config.Progress, "show download progress for large files (>50MB)")
 
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: czds download [OPTIONS] [zones...]\n\n")
@@ -77,12 +131,14 @@ func downloadCmd() *Command {
 		fmt.Fprintf(os.Stderr, "\nExamples:\n")
 		fmt.Fprintf(os.Stderr, "  czds download                                # Download all available zones\n")
 		fmt.Fprintf(os.Stderr, "  czds download -zones com,org                  # Download specific zones\n")
+		fmt.Fprintf(os.Stderr, "  czds download -include com,org                # Only download com and org\n")
 		fmt.Fprintf(os.Stderr, "  czds download -parallel 10 -out ./zones     # Download with 10 parallel workers\n")
 		fmt.Fprintf(os.Stderr, "  czds download -force -zone com               # Force redownload of com zone\n")
 		fmt.Fprintf(os.Stderr, "  czds download -exclude com,net               # Download all except com and net\n")
 		fmt.Fprintf(os.Stderr, "  czds download -progress -zone com            # Download with progress reporting\n")
 		fmt.Fprintf(os.Stderr, "\nZones can also be specified as positional arguments:\n")
 		fmt.Fprintf(os.Stderr, "  czds download com org net                    # Download com, org, and net zones\n")
+		fmt.Fprintf(os.Stderr, "\nNote: -include and positional arguments cannot be used together.\n")
 	}
 
 	return &Command{
@@ -107,6 +163,10 @@ func downloadCmd() *Command {
 			}
 			if config.Parallel > 100 {
 				return fmt.Errorf("parallel downloads limited to 100 to prevent resource exhaustion")
+			}
+
+			if config.Include != "" && len(config.Zones) > 0 {
+				return fmt.Errorf("cannot use both -include flag and positional zone arguments")
 			}
 
 			// Create client
@@ -207,12 +267,14 @@ func getDownloadLinks(ctx context.Context, client *czds.Client, config *Download
 		fmt.Printf("Received %d zone links\n", len(downloads))
 	}
 
-	// If zones specified via args or -zones flag, filter to those zones
+	// If zones specified via args or -zones flag or -include flag, filter to those zones
 	var zonesToDownload []string
 	if len(config.Zones) > 0 {
 		zonesToDownload = config.Zones
 	} else if config.Zone != "" {
 		zonesToDownload = strings.Split(config.Zone, ",")
+	} else if config.Include != "" {
+		zonesToDownload = strings.Split(config.Include, ",")
 	}
 
 	if len(zonesToDownload) > 0 {
@@ -232,8 +294,8 @@ func getDownloadLinks(ctx context.Context, client *czds.Client, config *Download
 			}
 		}
 
-		// Check if any requested zones were not found
-		if len(filteredDownloads) < len(zonesToDownload) {
+		// Check if any requested zones were not found (only for explicit zone lists, not include-only)
+		if config.Include == "" && len(filteredDownloads) < len(zonesToDownload) {
 			foundZones := make(map[string]bool)
 			for _, link := range filteredDownloads {
 				fileName := path.Base(link)
@@ -361,6 +423,9 @@ func zoneDownload(ctx context.Context, client *czds.Client, config *DownloadConf
 		return fmt.Errorf("%s [%s]", err, zi.Dl)
 	}
 
+	// Store last modified time for date-based directory
+	zi.LastModified = info.LastModified
+
 	// use filename from url or header?
 	localFileName := info.Filename
 	if config.URLName {
@@ -373,7 +438,21 @@ func zoneDownload(ctx context.Context, client *czds.Client, config *DownloadConf
 		return fmt.Errorf("invalid filename: %q", localFileName)
 	}
 
-	zi.FullPath = filepath.Join(config.OutDir, safeFileName)
+	// Build the full path, potentially with date-based subdirectory
+	outDir := config.OutDir
+	if config.DateDir && !zi.LastModified.IsZero() {
+		dateDir := zi.LastModified.Format("2006-01-02")
+		outDir = filepath.Join(config.OutDir, dateDir)
+	}
+
+	// Create date directory if needed
+	if config.DateDir && !zi.LastModified.IsZero() {
+		if err := os.MkdirAll(outDir, 0755); err != nil {
+			return fmt.Errorf("failed to create date directory: %w", err)
+		}
+	}
+
+	zi.FullPath = filepath.Join(outDir, safeFileName)
 
 	// Extra safety check: ensure the resolved path is still within the output directory
 	absOutDir, err := filepath.Abs(config.OutDir)

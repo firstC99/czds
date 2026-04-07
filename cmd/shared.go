@@ -35,17 +35,32 @@ type Command struct {
 }
 
 // addGlobalFlags adds the common authentication and verbose flags to a FlagSet.
-// It checks for CZDS_USERNAME and CZDS_PASSWORD environment variables and uses them as defaults.
+// It checks for config file, environment variables and uses them as defaults.
+// Priority: command line flags > environment variables > config file
 func addGlobalFlags(fs *flag.FlagSet, gf *GlobalFlags) {
-	// Check for username and password from environment variables first
-	defaultUsername := os.Getenv("CZDS_USERNAME")
-	defaultPassword := os.Getenv("CZDS_PASSWORD")
-	defaultProxy := os.Getenv("CZDS_PROXY")
+	username := os.Getenv("CZDS_USERNAME")
+	password := os.Getenv("CZDS_PASSWORD")
+	proxy := os.Getenv("CZDS_PROXY")
 
-	fs.StringVar(&gf.Username, "username", defaultUsername, "username to authenticate with (or set CZDS_USERNAME env var)")
-	fs.StringVar(&gf.Password, "password", defaultPassword, "password to authenticate with (or set CZDS_PASSWORD env var)")
-	fs.StringVar(&gf.Proxy, "proxy", defaultProxy, "proxy server URL to use for requests (or set CZDS_PROXY env var)")
-	fs.BoolVar(&gf.Verbose, "verbose", false, "enable verbose logging")
+	if globalConfig != nil {
+		if username == "" && globalConfig.Username != "" {
+			username = globalConfig.Username
+		}
+		if password == "" && globalConfig.Password != "" {
+			password = globalConfig.Password
+		}
+		if proxy == "" && globalConfig.Proxy != "" {
+			proxy = globalConfig.Proxy
+		}
+		if !gf.Verbose && globalConfig.Verbose {
+			gf.Verbose = globalConfig.Verbose
+		}
+	}
+
+	fs.StringVar(&gf.Username, "username", username, "username to authenticate with (or set CZDS_USERNAME env var or config file)")
+	fs.StringVar(&gf.Password, "password", password, "password to authenticate with (or set CZDS_PASSWORD env var or config file)")
+	fs.StringVar(&gf.Proxy, "proxy", proxy, "proxy server URL to use for requests (or set CZDS_PROXY env var or config file)")
+	fs.BoolVar(&gf.Verbose, "verbose", gf.Verbose, "enable verbose logging")
 }
 
 // createClient creates a CZDS client using the global flags for authentication

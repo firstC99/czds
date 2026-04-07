@@ -113,6 +113,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -279,10 +280,15 @@ func (c *Client) SetProxy(proxyURL string) error {
 		return fmt.Errorf("invalid proxy URL: %w", err)
 	}
 
+	dialer := &net.Dialer{
+		Timeout: 30 * time.Second,
+	}
+
 	transport := &http.Transport{
-		Proxy:           http.ProxyURL(parsedURL),
-		IdleConnTimeout: 90 * time.Second,
+		Proxy:             http.ProxyURL(parsedURL),
+		IdleConnTimeout:   90 * time.Second,
 		DisableCompression: false,
+		DialContext:       dialer.DialContext,
 	}
 
 	c.ProxyURL = proxyURL
