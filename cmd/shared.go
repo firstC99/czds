@@ -22,6 +22,7 @@ const (
 type GlobalFlags struct {
 	Username string
 	Password string
+	Proxy    string
 	Verbose  bool
 }
 
@@ -39,9 +40,11 @@ func addGlobalFlags(fs *flag.FlagSet, gf *GlobalFlags) {
 	// Check for username and password from environment variables first
 	defaultUsername := os.Getenv("CZDS_USERNAME")
 	defaultPassword := os.Getenv("CZDS_PASSWORD")
+	defaultProxy := os.Getenv("CZDS_PROXY")
 
 	fs.StringVar(&gf.Username, "username", defaultUsername, "username to authenticate with (or set CZDS_USERNAME env var)")
 	fs.StringVar(&gf.Password, "password", defaultPassword, "password to authenticate with (or set CZDS_PASSWORD env var)")
+	fs.StringVar(&gf.Proxy, "proxy", defaultProxy, "proxy server URL to use for requests (or set CZDS_PROXY env var)")
 	fs.BoolVar(&gf.Verbose, "verbose", false, "enable verbose logging")
 }
 
@@ -56,6 +59,12 @@ func createClient(gf *GlobalFlags) (*czds.Client, error) {
 
 	if gf.Verbose {
 		client.SetLogger(log.Default())
+	}
+
+	if gf.Proxy != "" {
+		if err := client.SetProxy(gf.Proxy); err != nil {
+			return nil, fmt.Errorf("invalid proxy: %w", err)
+		}
 	}
 
 	return client, nil

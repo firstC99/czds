@@ -114,6 +114,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -172,6 +173,7 @@ type Client struct {
 	HTTPClient *http.Client
 	AuthURL    string
 	BaseURL    string
+	ProxyURL   string
 	// UserAgent is the User-Agent header value sent with HTTP requests.
 	// If empty, no User-Agent header will be set.
 	UserAgent string
@@ -259,6 +261,36 @@ func (c *Client) httpClient() *http.Client {
 		return c.HTTPClient
 	}
 	return defaultHTTPClient
+}
+
+// SetProxy sets the proxy URL for the client and configures the HTTP transport
+// to use the specified proxy for all HTTP requests. The proxyURL should be
+// a valid URL string (e.g., "http://proxy.example.com:8080").
+// An empty proxyURL will disable proxy usage.
+func (c *Client) SetProxy(proxyURL string) error {
+	if proxyURL == "" {
+		c.ProxyURL = ""
+		c.HTTPClient = nil
+		return nil
+	}
+
+	parsedURL, err := url.Parse(proxyURL)
+	if err != nil {
+		return fmt.Errorf("invalid proxy URL: %w", err)
+	}
+
+	transport := &http.Transport{
+		Proxy:           http.ProxyURL(parsedURL),
+		IdleConnTimeout: 90 * time.Second,
+		DisableCompression: false,
+	}
+
+	c.ProxyURL = proxyURL
+	c.HTTPClient = &http.Client{
+		Transport: transport,
+	}
+
+	return nil
 }
 
 // apiRequest makes an authenticated HTTP request to the CZDS API endpoint with retry logic.

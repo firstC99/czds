@@ -49,6 +49,7 @@ Use "czds <command> -h" for more information about a command.
 Global Options:
   -username string    Username to authenticate with (or set CZDS_USERNAME env var)
   -password string    Password to authenticate with (or set CZDS_PASSWORD env var)
+  -proxy string       Proxy server URL to use for requests (or set CZDS_PROXY env var)
   -verbose            Enable verbose logging
 
 Examples:
@@ -65,6 +66,20 @@ The czds command supports multiple authentication methods:
 2. **Environment variables**: `CZDS_USERNAME` and `CZDS_PASSWORD`
 
 Environment variables are checked first and used as defaults if the corresponding flags are not provided.
+
+### Proxy Support
+
+The czds command supports routing traffic through a proxy server:
+
+1. **Command-line flag**: `-proxy` or `-p`
+2. **Environment variable**: `CZDS_PROXY`
+
+Proxy URL formats:
+- `http://proxy.example.com:8080` - HTTP proxy
+- `https://proxy.example.com:8080` - HTTPS proxy (forward proxy)
+- `socks5://proxy.example.com:1080` - SOCKS5 proxy
+
+Environment variables are checked first and used as defaults if the corresponding flag is not provided.
 
 ## Download Subcommand
 
@@ -125,6 +140,11 @@ czds download com org net                    # Download com, org, and net zones
 export CZDS_USERNAME="your_username"
 export CZDS_PASSWORD="your_password"
 czds download -verbose
+
+# Using proxy:
+czds download -proxy http://proxy.example.com:8080
+export CZDS_PROXY="http://proxy.example.com:8080"
+czds download
 ```
 
 ## Request Subcommand
