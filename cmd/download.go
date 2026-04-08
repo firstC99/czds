@@ -455,7 +455,8 @@ func zoneDownload(ctx context.Context, client *czds.Client, config *DownloadConf
 	zi.FullPath = filepath.Join(outDir, safeFileName)
 
 	// Extra safety check: ensure the resolved path is still within the output directory
-	absOutDir, err := filepath.Abs(config.OutDir)
+	// Use outDir (which may include date subdirectory) for the prefix check
+	absOutDir, err := filepath.Abs(outDir)
 	if err != nil {
 		return fmt.Errorf("failed to resolve output directory: %w", err)
 	}
@@ -463,6 +464,7 @@ func zoneDownload(ctx context.Context, client *czds.Client, config *DownloadConf
 	if err != nil {
 		return fmt.Errorf("failed to resolve target path: %w", err)
 	}
+
 	if !strings.HasPrefix(absFullPath, absOutDir+string(filepath.Separator)) && absFullPath != absOutDir {
 		return fmt.Errorf("resolved path %q is outside output directory %q", absFullPath, absOutDir)
 	}
